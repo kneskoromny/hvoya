@@ -1,83 +1,140 @@
 import '../css/style.css'
 import { db } from '../js/firebase.js';
-import { ref, onValue } from 'firebase/database'
+import { ref, get } from 'firebase/database'
 import { ref as storageRef, getDownloadURL, listAll } from "firebase/storage";
 import { storage } from "../js/firebase.js"; // Импортируем хранилище
 
+const categoriesRef = ref(db, "categories");
+const productsRef = ref(db, "products");
 
-console.log("Firebase подключен!");
+let categoriesData = {};
+let productsData = {};
 
-// Функция для загрузки данных
-const loadData = () => {
-    const dataRef = ref(db, "products"); // Путь к данным (замени на свой)
+const loader = document.getElementById("page-loader")
+const categoriesSlider = document.getElementById('categories-slider');
+const productList = document.getElementById("product-list");
 
-    onValue(dataRef, (snapshot) => {
-        if (snapshot.exists()) {
-            const data = snapshot.val();
-            console.log("Полученные данные:", data);
-            renderData(data)
-        } else {
-            console.log("Данные отсутствуют");
+let selectedCategory = null;
+
+/* Загрузка Категорий и Продуктов */
+const fetchData = async () => {
+    try {
+        const [categoriesSnap, productsSnap] = await Promise.all([
+            get(categoriesRef),
+            get(productsRef),
+        ])
+        if (categoriesSnap.exists()) {
+            categoriesData = categoriesSnap.val();
         }
-    }, (error) => {
+        if (productsSnap.exists()) {
+            productsData = productsSnap.val();
+        }
+        renderCategories(categoriesData);
+        renderProducts(productsData);
+        loader.style.display = 'none';
+    } catch (error) {
         console.error("Ошибка загрузки данных:", error);
-    });
-};
-
-const renderData = (data) => {
-    const container = document.getElementById("product-list");
-    container.innerHTML = ""; // Очищаем перед обновлением
-
-    Object.keys(data).forEach(async (key) => {
-        const item = data[key];
-
-        const productElement = document.createElement("div");
-        productElement.classList.add("product-card");
-
-        // Создаем ссылку на папку в Storage
-        const folderRef = storageRef(storage, `images/products/${key}/`);
-
-        try {
-            const result = await listAll(folderRef); // Получаем список файлов
-            const imageUrls = await Promise.all(
-                result.items.map(async (fileRef) => await getDownloadURL(fileRef))
-            );
-
-            // Формируем карточку с изображениями (первое — основное, остальные — миниатюры)
-            productElement.innerHTML = `
-                <div class="product-images">
-                    <img src="${imageUrls[0] || 'https://via.placeholder.com/250x180'}" alt="${item.name}" class="main-image">
-                    <div class="thumbnails">
-                        ${imageUrls.slice(1).map(url => `<img src="${url}" class="thumbnail">`).join('')}
-                    </div>
-                </div>
-                <h3 class="product-title">${item.name}</h3>
-                <p class="product-material">Материал: ${item.fabric}</p>
-                <p class="product-price">${item.price.standard} ₽</p>
-            `;
-
-        } catch (error) {
-            console.error("Ошибка загрузки изображений:", error);
-            productElement.innerHTML = `
-                <img src="https://via.placeholder.com/250x180" alt="Placeholder">
-                <h3 class="product-title">${item.title}</h3>
-                <p class="product-material">Материал: ${item.material}</p>
-                <p class="product-price">${item.price} ₽</p>
-            `;
-        }
-
-        container.appendChild(productElement);
-    });
-};
-
-document.addEventListener("click", (e) => {
-    if (e.target.classList.contains("thumbnail")) {
-        const mainImage = e.target.closest(".product-card").querySelector(".main-image");
-        mainImage.src = e.target.src;
+        loader.textContent = "Ошибка загрузки данных 😕";
     }
-});
+}
+/* Рендер Категорий */
+const renderCategories = (categories) => {
+  categoriesSlider.innerHTML = ''; // Очищаем перед рендерингом
+  categoriesSlider.style.display = "flex"; // Показываем слайдер
+
+  Object.keys(categories).forEach((key, index) => {
+    const category = categories[key];
+
+    const button = document.createElement('button');
+    button.classList.add('category-button');
+    button.textContent = category.name;
+    
+    // Выбираем первую категорию по умолчанию
+    if (index === 0) {
+      selectedCategory = category.name;
+      button.classList.add('active');
+    }
+
+    // Обработчик клика
+    button.addEventListener('click', () => {
+      selectedCategory = category.name;
+      updateCategorySelection();
+      renderProducts(productsData); // Перерисовываем продукты
+    });
+
+    categoriesSlider.appendChild(button);
+  });
+
+  updateCategorySelection();
+};
+
+const renderProducts = (products) => {
+  productList.innerHTML = ''; // Очищаем список перед рендерингом
+  productList.style.display = 'flex';
+
+  Object.keys(products).forEach((key) => {
+    const product = products[key];
+
+    // Фильтруем по выбранной категории
+    if (product.categoryName !== selectedCategory) {
+      return;
+    }
+
+    const productCard = document.createElement('div');
+    productCard.classList.add('product-card');
+    productCard.setAttribute('data-key', key); // Добавляем атрибут для поиска
+
+    productCard.innerHTML = `
+    <div class="product-image">
+        <img src="../assets/loader.gif" alt="Loading" class="loader">
+        <img src="" alt="${product.name}" class="main-image" id="img-${key}">
+    </div>
+    <h3 class="product-title">${product.name}</h3>
+    <p class="product-material">Материал: ${product.fabric}</p>
+    <p class="product-price">${product.price.standard} ₽</p>
+`;
 
 
+    productList.appendChild(productCard);
+    loadProductImage(key, product.name); // Запускаем загрузку изображения
+  });
+};
+
+const loadProductImage = async (key, productName) => {
+  const folderRef = storageRef(storage, `images/products/${key}/`);
+  try {
+    const result = await listAll(folderRef);
+    if (result.items.length > 0) {
+      const imageUrl = await getDownloadURL(result.items[0]);
+      const imgElement = document.getElementById(`img-${key}`);
+      if (imgElement) {
+        imgElement.src = imageUrl;
+        imgElement.style.display = "block"; // Показываем изображение
+        imgElement.previousElementSibling.style.display = "none"; // Прячем лоадер
+      }
+    } else {
+      throw new Error("Нет изображений");
+    }
+  } catch (error) {
+    console.error(`Ошибка загрузки изображения для ${productName}:`, error);
+    const imgElement = document.getElementById(`img-${key}`);
+    if (imgElement) {
+      imgElement.src = "https://placehold.co/200x300";
+      imgElement.style.display = "block";
+      imgElement.previousElementSibling.style.display = "none";
+    }
+  }
+};
 
 
-document.addEventListener("DOMContentLoaded", loadData);
+const updateCategorySelection = () => {
+  document.querySelectorAll('.category-button').forEach(button => {
+    if (button.textContent === selectedCategory) {
+      button.classList.add('active');
+    } else {
+      button.classList.remove('active');
+    }
+  });
+};
+
+document.addEventListener("DOMContentLoaded", fetchData);
