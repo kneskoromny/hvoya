@@ -67,7 +67,10 @@ const renderModels = (models) => {
     </div>
     <h3 class="product-title">${model.name}</h3>
     <p class="product-material">${model.description}</p>
-`;
+    `;
+    modelCard.addEventListener("click", () => {
+      window.location.href = `model.html?id=${key}`;
+    });
     modelList.appendChild(modelCard);
     loadModelImage(key, model.name); 
   });
