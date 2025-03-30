@@ -2,106 +2,79 @@ import '../css/style.css'
 import { db } from '../js/firebase.js';
 import { ref, get } from 'firebase/database'
 import { ref as storageRef, getDownloadURL, listAll } from "firebase/storage";
-import { storage } from "../js/firebase.js"; // Импортируем хранилище
+import { storage } from "../js/firebase.js";
 
-const categoriesRef = ref(db, "categories");
-const productsRef = ref(db, "products");
+const modelsRef = ref(db, "models");
+const fabricsRef = ref(db, "fabrics");
+const colorsRef = ref(db, "colors");
 
-let categoriesData = {};
-let productsData = {};
+let modelsData = {};
+let fabricsData = {};
+let colorsData = {};
 
-const loader = document.getElementById("page-loader")
-const categoriesSlider = document.getElementById('categories-slider');
-const productList = document.getElementById("product-list");
+const loader = document.getElementById("page-loader");
+const contentContainer = document.getElementById("content-container");
+const modelList = document.getElementById("model-list");
 
-let selectedCategory = null;
-
-/* Загрузка Категорий и Продуктов */
+/* Загрузка Моделей */
 const fetchData = async () => {
     try {
-        const [categoriesSnap, productsSnap] = await Promise.all([
-            get(categoriesRef),
-            get(productsRef),
+        const [
+          modelsSnap,
+          fabricsSnap,
+          colorsSnap
+        ] = await Promise.all([
+            get(modelsRef),
+            get(fabricsRef),
+            get(colorsRef)
         ])
-        if (categoriesSnap.exists()) {
-            categoriesData = categoriesSnap.val();
+        if (modelsSnap.exists()) {
+          modelsData = modelsSnap.val()
+          console.log('Success upload models: ')
         }
-        if (productsSnap.exists()) {
-            productsData = productsSnap.val();
+        if (fabricsSnap.exists()) {
+          fabricsData = fabricsSnap.val()
+          console.log('Success upload fabrics: ')
         }
-        renderCategories(categoriesData);
-        renderProducts(productsData);
+        if (colorsSnap.exists()) {
+          colorsData = colorsSnap.val()
+          console.log('Success upload colors: ')
+        }
+        renderModels(modelsData);
         loader.style.display = 'none';
+        contentContainer.style.display = 'block';
     } catch (error) {
         console.error("Ошибка загрузки данных:", error);
         loader.textContent = "Ошибка загрузки данных 😕";
     }
 }
-/* Рендер Категорий */
-const renderCategories = (categories) => {
-  categoriesSlider.innerHTML = ''; // Очищаем перед рендерингом
-  categoriesSlider.style.display = "flex"; // Показываем слайдер
 
-  Object.keys(categories).forEach((key, index) => {
-    const category = categories[key];
+const renderModels = (models) => {
+  modelList.innerHTML = ''; 
+  modelList.style.display = 'flex';
 
-    const button = document.createElement('button');
-    button.classList.add('category-button');
-    button.textContent = category.name;
-    
-    // Выбираем первую категорию по умолчанию
-    if (index === 0) {
-      selectedCategory = category.name;
-      button.classList.add('active');
-    }
+  Object.keys(models).forEach((key) => {
+    const model = models[key];
 
-    // Обработчик клика
-    button.addEventListener('click', () => {
-      selectedCategory = category.name;
-      updateCategorySelection();
-      renderProducts(productsData); // Перерисовываем продукты
-    });
+    const modelCard = document.createElement('div');
+    modelCard.classList.add('product-card');
+    modelCard.setAttribute('data-key', key); // Добавляем атрибут для поиска
 
-    categoriesSlider.appendChild(button);
-  });
-
-  updateCategorySelection();
-};
-
-const renderProducts = (products) => {
-  productList.innerHTML = ''; // Очищаем список перед рендерингом
-  productList.style.display = 'flex';
-
-  Object.keys(products).forEach((key) => {
-    const product = products[key];
-
-    // Фильтруем по выбранной категории
-    if (product.categoryName !== selectedCategory) {
-      return;
-    }
-
-    const productCard = document.createElement('div');
-    productCard.classList.add('product-card');
-    productCard.setAttribute('data-key', key); // Добавляем атрибут для поиска
-
-    productCard.innerHTML = `
+    modelCard.innerHTML = `
     <div class="product-image">
         <img src="../assets/loader.gif" alt="Loading" class="loader">
-        <img src="" alt="${product.name}" class="main-image" id="img-${key}">
+        <img src="" alt="${model.name}" class="main-image" id="img-${key}">
     </div>
-    <h3 class="product-title">${product.name}</h3>
-    <p class="product-material">Материал: ${product.fabric}</p>
-    <p class="product-price">${product.price.standard} ₽</p>
+    <h3 class="product-title">${model.name}</h3>
+    <p class="product-material">${model.description}</p>
 `;
-
-
-    productList.appendChild(productCard);
-    loadProductImage(key, product.name); // Запускаем загрузку изображения
+    modelList.appendChild(modelCard);
+    loadModelImage(key, model.name); 
   });
 };
 
-const loadProductImage = async (key, productName) => {
-  const folderRef = storageRef(storage, `images/products/${key}/`);
+const loadModelImage = async (key, modelName) => {
+  const folderRef = storageRef(storage, `images/models/${key}/`);
   try {
     const result = await listAll(folderRef);
     if (result.items.length > 0) {
@@ -116,7 +89,7 @@ const loadProductImage = async (key, productName) => {
       throw new Error("Нет изображений");
     }
   } catch (error) {
-    console.error(`Ошибка загрузки изображения для ${productName}:`, error);
+    console.error(`Ошибка загрузки изображения для ${modelName}:`, error);
     const imgElement = document.getElementById(`img-${key}`);
     if (imgElement) {
       imgElement.src = "https://placehold.co/200x300";
@@ -125,16 +98,4 @@ const loadProductImage = async (key, productName) => {
     }
   }
 };
-
-
-const updateCategorySelection = () => {
-  document.querySelectorAll('.category-button').forEach(button => {
-    if (button.textContent === selectedCategory) {
-      button.classList.add('active');
-    } else {
-      button.classList.remove('active');
-    }
-  });
-};
-
 document.addEventListener("DOMContentLoaded", fetchData);
